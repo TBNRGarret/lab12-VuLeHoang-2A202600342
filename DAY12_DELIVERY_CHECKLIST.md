@@ -20,46 +20,99 @@ Create a file `MISSION_ANSWERS.md` with your answers to all exercises:
 ## Part 1: Localhost vs Production
 
 ### Exercise 1.1: Anti-patterns found
-1. [Your answer]
-2. [Your answer]
-...
+
+1. API key hardcode trong code
+2. Không có health check endpoint
+3. Debug mode bật cứng
+4. Không xử lý SIGTERM gracefully
+5. Config không đến từ environment
 
 ### Exercise 1.3: Comparison table
-| Feature | Develop | Production | Why Important? |
-|---------|---------|------------|----------------|
-| Config  | ...     | ...        | ...            |
-...
+
+
+| Feature      | Develop                 | Production                             | Why Important? |
+| ------------ | ----------------------- | -------------------------------------- | -------------- |
+| Config       | Hardcode trong code     | Đọc từ env vars     | Cùng một build có thể chạy dev/staging/prod; đổi cấu hình không cần sửa code. |
+| Secrets      | `api_key = "sk-abc123"` | `os.getenv("OPENAI_API_KEY")` | Tránh lộ key trong repo; dễ rotate và phân quyền theo môi trường. |
+| Port         | Cố định `8000`          | Từ `PORT` env var                      | Nền tảng cloud thường gán port động; app phải bind đúng port được cấp. |
+| Health check | Không có                | `GET /health`                          | Load balancer/orchestrator biết instance còn sống và sẵn sàng nhận traffic. |
+| Shutdown     | Tắt đột ngột            | Graceful — hoàn thành request hiện tại | Giảm lỗi khi deploy/scale-in; request đang xử lý không bị cắt đột ngột. |
+| Logging      | `print()`               | Structured JSON logging                | Dễ parse, tìm kiếm và tích hợp với hệ thống log/monitoring tập trung. |
+
 
 ## Part 2: Docker
 
 ### Exercise 2.1: Dockerfile questions
-1. Base image: [Your answer]
-2. Working directory: [Your answer]
+
+1. Base image: `python:3.11`
+2. Working directory: `/app`
+
 ...
 
 ### Exercise 2.3: Image size comparison
-- Develop: [X] MB
-- Production: [Y] MB
-- Difference: [Z]%
+
+- Develop: 1.66 GB
+- Production: 236 MB
+- Difference: 83%
 
 ## Part 3: Cloud Deployment
 
 ### Exercise 3.1: Railway deployment
-- URL: https://your-app.railway.app
+
+- URL: [https://lab12-production-02b9.up.railway.app](https://your-app.railway.app)
 - Screenshot: [Link to screenshot in repo]
 
 ## Part 4: API Security
 
 ### Exercise 4.1-4.3: Test results
-[Paste your test outputs]
+
+## Exercise 4.1: Test results
+API key được check ở đâu?
+Giá trị chuẩn lấy từ biến môi trường AGENT_API_KEY (mặc định "demo-key-change-in-production"):
+API_KEY = os.getenv("AGENT_API_KEY", "demo-key-change-in-production")
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+Nếu sai key thì sao?
+Không gửi header (hoặc rỗng): 401, body có detail giải thích thiếu key.
+Gửi key nhưng khác API_KEY: 403, detail: "Invalid API key."
+
+Làm sao rotate key?
+Trong code hiện tại chỉ có một key đúng tại một thời điểm (API_KEY là một chuỗi). Rotate thực tế:
+
+Đặt giá trị mới cho AGENT_API_KEY (file .env, Railway/Render secrets, Kubernetes Secret, v.v.).
+Deploy / restart process để nó đọc env mới (giá trị được load lúc start, không tự đổi khi chỉ sửa secret trên dashboard mà không restart).
+Cập nhật mọi client gửi header X-API-Key sang key mới.
+
+## Exercise 4.2: Test results
+Tokens:
+DEMO_USERS = {
+    "student": {"password": "demo123", "role": "user", "daily_limit": 50},
+    "teacher": {"password": "teach456", "role": "admin", "daily_limit": 1000},
+}
+
+## Exercise 4.3: 
+Algorithm được dùng: Sliding window
+
+Limit 10 requests/minute cho rate_limit_user 
+Limit 100 requests/minute cho rate_limit_admin
+
+"Bypass" limit cho admin:
+Không có bypass hoàn toàn. Admin dùng bộ giới hạn khác cao hơn. User demo có role admin là teacher / teach456 (auth.py). Đăng nhập bằng account đó thì trong vòng 1 phút được 100 lần gọi thay vì 10.
+
+Test 20 lần — khi trúng limit
+Với token student (role user): giới hạn 10/phút → từ request thứ 11 trở đi trong cùng cửa sổ ~60s sẽ nhận HTTP 429, body kiểu:
+
+detail.error: "Rate limit exceeded"
+detail.retry_after_seconds, và header Retry-After, X-RateLimit-*
 
 ### Exercise 4.4: Cost guard implementation
-[Explain your approach]
+
+Phiên bản production — dùng Redis nên data bền vững, nhiều server instances cùng share chung 1 nguồn dữ liệu budget.
 
 ## Part 5: Scaling & Reliability
 
 ### Exercise 5.1-5.5: Implementation notes
-[Your explanations and test results]
+
 ```
 
 ---
@@ -108,10 +161,11 @@ Create a file `DEPLOYMENT.md` with your deployed service information:
 # Deployment Information
 
 ## Public URL
-https://your-agent.railway.app
+
+Public URL: https://lab12-production-02b9.up.railway.app/
 
 ## Platform
-Railway / Render / Cloud Run
+Railway
 
 ## Test Commands
 
@@ -136,23 +190,23 @@ curl -X POST https://your-agent.railway.app/ask \
 - LOG_LEVEL
 
 ## Screenshots
-- [Deployment dashboard](screenshots/dashboard.png)
-- [Service running](screenshots/running.png)
-- [Test results](screenshots/test.png)
+- ![Deployment dashboard](Task4.png)
+- ![Service running](Task41.png)
+- ![Test results](screenshots/test.png)
 ```
 
 ##  Pre-Submission Checklist
 
-- [ ] Repository is public (or instructor has access)
-- [ ] `MISSION_ANSWERS.md` completed with all exercises
-- [ ] `DEPLOYMENT.md` has working public URL
-- [ ] All source code in `app/` directory
-- [ ] `README.md` has clear setup instructions
-- [ ] No `.env` file committed (only `.env.example`)
-- [ ] No hardcoded secrets in code
-- [ ] Public URL is accessible and working
-- [ ] Screenshots included in `screenshots/` folder
-- [ ] Repository has clear commit history
+- [X] Repository is public (or instructor has access)
+- [X ] `MISSION_ANSWERS.md` completed with all exercises
+- [X] `DEPLOYMENT.md` has working public URL
+- [X] All source code in `app/` directory
+- [X] `README.md` has clear setup instructions
+- [X] No `.env` file committed (only `.env.example`)
+- [X] No hardcoded secrets in code
+- [X] Public URL is accessible and working
+- [X] Screenshots included in `screenshots/` folder
+- [X] Repository has clear commit history
 
 ---
 
