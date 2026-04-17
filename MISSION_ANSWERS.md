@@ -27,33 +27,70 @@
 
 ### Exercise 2.1: Dockerfile questions
 
-1. Base image: [Your answer]
-2. Working directory: [Your answer]
+1. Base image: `python:3.11`
+2. Working directory: `/app`
 
 ...
 
 ### Exercise 2.3: Image size comparison
 
-- Develop: [X] MB
-- Production: [Y] MB
-- Difference: [Z]%
+- Develop: 1.66 GB
+- Production: 236 MB
+- Difference: 83%
 
 ## Part 3: Cloud Deployment
 
 ### Exercise 3.1: Railway deployment
 
-- URL: [https://your-app.railway.app](https://your-app.railway.app)
+- URL: [https://lab12-production-02b9.up.railway.app](https://your-app.railway.app)
 - Screenshot: [Link to screenshot in repo]
 
 ## Part 4: API Security
 
 ### Exercise 4.1-4.3: Test results
 
-[Paste your test outputs]
+## Exercise 4.1: Test results
+API key được check ở đâu?
+Giá trị chuẩn lấy từ biến môi trường AGENT_API_KEY (mặc định "demo-key-change-in-production"):
+API_KEY = os.getenv("AGENT_API_KEY", "demo-key-change-in-production")
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+Nếu sai key thì sao?
+Không gửi header (hoặc rỗng): 401, body có detail giải thích thiếu key.
+Gửi key nhưng khác API_KEY: 403, detail: "Invalid API key."
+
+Làm sao rotate key?
+Trong code hiện tại chỉ có một key đúng tại một thời điểm (API_KEY là một chuỗi). Rotate thực tế:
+
+Đặt giá trị mới cho AGENT_API_KEY (file .env, Railway/Render secrets, Kubernetes Secret, v.v.).
+Deploy / restart process để nó đọc env mới (giá trị được load lúc start, không tự đổi khi chỉ sửa secret trên dashboard mà không restart).
+Cập nhật mọi client gửi header X-API-Key sang key mới.
+
+## Exercise 4.2: Test results
+Tokens:
+DEMO_USERS = {
+    "student": {"password": "demo123", "role": "user", "daily_limit": 50},
+    "teacher": {"password": "teach456", "role": "admin", "daily_limit": 1000},
+}
+
+## Exercise 4.3: 
+Algorithm được dùng: Sliding window
+
+Limit 10 requests/minute cho rate_limit_user 
+Limit 100 requests/minute cho rate_limit_admin
+
+"Bypass" limit cho admin:
+Không có bypass hoàn toàn. Admin dùng bộ giới hạn khác cao hơn. User demo có role admin là teacher / teach456 (auth.py). Đăng nhập bằng account đó thì trong vòng 1 phút được 100 lần gọi thay vì 10.
+
+Test 20 lần — khi trúng limit
+Với token student (role user): giới hạn 10/phút → từ request thứ 11 trở đi trong cùng cửa sổ ~60s sẽ nhận HTTP 429, body kiểu:
+
+detail.error: "Rate limit exceeded"
+detail.retry_after_seconds, và header Retry-After, X-RateLimit-*
 
 ### Exercise 4.4: Cost guard implementation
 
-[Explain your approach]
+Phiên bản production — dùng Redis nên data bền vững, nhiều server instances cùng share chung 1 nguồn dữ liệu budget.
 
 ## Part 5: Scaling & Reliability
 

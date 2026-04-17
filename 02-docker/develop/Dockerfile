@@ -11,7 +11,7 @@ FROM python:3.11
 WORKDIR /app
 
 # Bước 3: Copy requirements TRƯỚC (Docker layer cache)
-COPY 02-docker/develop/requirements.txt .
+COPY ./02-docker/develop/requirements.txt .
 
 # Bước 4: Cài dependencies
 RUN pip install --no-cache-dir -r requirements.txt
